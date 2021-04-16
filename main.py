@@ -5,6 +5,7 @@ import xlsxwriter
 from time import time
 import math
 import satExtensionFinder
+import customMiniSatExtensionFinder
 
 
 def compute_graph_instance(row):
@@ -112,6 +113,14 @@ def compute_graph_instance(row):
 
     outputSatExtensionStr = extension_to_str(satExtension)
 
+    extension_compute_start_time = int(time() * 1000)
+    csatExtension = customMiniSatExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set, satExtension is None)
+    extension_compute_end_time = int(time() * 1000)
+    time_taken_csat_solver = extension_compute_end_time - extension_compute_start_time
+    time_taken_csat_solver = round(time_taken_csat_solver / 1000, 0)
+
+    outputCSatExtensionStr = extension_to_str(csatExtension)
+
     write_in_worksheet(row, 2, outputSatExtensionStr)
     write_in_worksheet(row, 3,
                        str(math.floor(time_taken_our_solver / 60)) + " mins " + str(
@@ -119,9 +128,15 @@ def compute_graph_instance(row):
     write_in_worksheet(row, 4,
                        str(math.floor(time_taken_sat_solver / 60)) + " mins " + str(
                            time_taken_sat_solver % 60) + " sec")
+    write_in_worksheet(row, 5,
+                       str(math.floor(time_taken_csat_solver / 60)) + " mins " + str(
+                           time_taken_csat_solver % 60) + " sec")
     return {"success": False if not extension else True, "time_taken_cus_solver": time_taken_our_solver,
-            "time_taken_sat_solver":  time_taken_sat_solver,
-            "sat_cus_differ": False if (satExtension and extension) or (not satExtension and not extension) else True}
+            "time_taken_sat_solver": time_taken_sat_solver, "time_taken_csat_solver": time_taken_csat_solver,
+            "sat_cus_differ": False if (satExtension and extension) or (not satExtension and not extension) else True,
+            "sat_csat_differ": False if (satExtension and csatExtension) or (
+                        not satExtension and not csatExtension) else True
+            }
 
 
 def extension_to_str(extension):
@@ -269,6 +284,7 @@ def init_worksheet():
         write_in_worksheet(3, 2, "Admissible Set by Sat solver")
         write_in_worksheet(3, 3, "Time taken to compute extension by Our solver")
         write_in_worksheet(3, 4, "Time taken to compute extension by MiniSAT solver")
+        write_in_worksheet(3, 5, "Time taken to compute extension by Custom MiniSAT solver")
 
 
 # Press the green button in the gutter to run the script.
@@ -278,26 +294,28 @@ if __name__ == '__main__':
     # q_probability = float(input("Enter Symmetric attack probability: "))
     # noOfGraphInstances = int(input("No. of graph instances needed: "))
 
-    noOfNodes = 512
+    noOfNodes = 128
     probability = 0.75
-    q_probability = 0.06
+    q_probability = 0.30
     noOfGraphInstances = 25
-    worksheetNeeded = False
+    worksheetNeeded = True
 
     x_axis = []
     y_axis = []
 
     y_axis_time_taken_cus = []
     y_axis_time_taken_sat = []
+    y_axis_time_taken_csat = []
     y_axis_solver_err = []
+    y_axis_solver_err_csat = []
 
     firststartTime = int(time() * 1000)
 
-    while q_probability <= 0.50:
+    while q_probability <= 0.40:
         x_axis.append(q_probability)
 
         if worksheetNeeded:
-            workbook = xlsxwriter.Workbook('Sample_D_d_p_q_output_' + str(q_probability) + '.xlsx')
+            workbook = xlsxwriter.Workbook('./output/Sample_D_d_p_q_output_' + str(q_probability) + '.xlsx')
             worksheet = workbook.add_worksheet()
             init_worksheet()
 
@@ -306,7 +324,9 @@ if __name__ == '__main__':
 
         timeTakenByCustomSolver = 0
         timeTakenBySatSolver = 0
+        timeTakenByCSatSolver = 0
         noOfSatCusSolverErr = 0
+        noOfCSatCusSolverErr = 0
 
         startTime = int(time() * 1000)
         print("StartTime:" + str(startTime))
@@ -317,12 +337,12 @@ if __name__ == '__main__':
             noOfSuccess = noOfSuccess + 1 if returnValueSet.get("success") else noOfSuccess
             timeTakenByCustomSolver += returnValueSet.get("time_taken_cus_solver")
             timeTakenBySatSolver += returnValueSet.get("time_taken_sat_solver")
+            timeTakenByCSatSolver += returnValueSet.get("time_taken_csat_solver")
             noOfSatCusSolverErr += 1 if returnValueSet.get("sat_cus_differ") else 0
+            noOfCSatCusSolverErr += 1 if returnValueSet.get("sat_csat_differ") else 0
             row = row + 1
             instanceEndTime = int(time() * 1000)
-            print("Time taken for this instance:", round((instanceEndTime - instanceStartTime)/60000, 0))
-
-
+            print("Time taken for this instance:", round((instanceEndTime - instanceStartTime) / 60000, 0))
 
         endTime = int(time() * 1000)
         print("EndTime:" + str(endTime))
@@ -332,7 +352,9 @@ if __name__ == '__main__':
         y_axis.append(noOfSuccess / noOfGraphInstances)
         y_axis_time_taken_cus.append(timeTakenByCustomSolver / noOfGraphInstances)
         y_axis_time_taken_sat.append(timeTakenBySatSolver / noOfGraphInstances)
+        y_axis_time_taken_csat.append(timeTakenByCSatSolver / noOfGraphInstances)
         y_axis_solver_err.append(noOfSatCusSolverErr)
+        y_axis_solver_err_csat.append(noOfCSatCusSolverErr)
 
         timeTakenInSec = round(timeTaken / 1000, 0)
         write_in_worksheet(1, 5, str(math.floor(timeTakenInSec / 60)) + " mins " + str(timeTakenInSec % 60) + " sec")
@@ -360,26 +382,35 @@ if __name__ == '__main__':
     axs[0].set_xlabel('q_probability')
     axs[0].set_ylabel('Average value of success instance')
 
-    axs[1].set_title("Time taken comparison between Custom solver and SAT(MiniSAT) solver")
+    axs[1].set_title("Time taken comparison between Custom solver, SAT(MiniSAT) solver, "
+                     "SAT(MiniSAT) Solver with custom branching heuristics")
     axs[1].set_xlabel('q_probability')
     axs[1].set_ylabel('Time taken(in Seconds)')
     axs[1].plot(x_axis, y_axis_time_taken_cus, marker='o', markerfacecolor='green', markersize=5,
-             color='green', label='Custom solver')
+                color='green', label='Custom solver')
     axs[1].plot(x_axis, y_axis_time_taken_sat, marker='o', markerfacecolor='red', markersize=5,
-             color='red', label='SAT(MiniSAT) solver')
+                color='red', label='SAT(MiniSAT) solver')
+    axs[1].plot(x_axis, y_axis_time_taken_csat, marker='o', markerfacecolor='violet', markersize=5,
+                color='violet', label='SAT(MiniSAT) solver with custom branching heuristics')
     axs[1].legend()
-    plt.savefig("comparison_graph.png")
+    plt.savefig("./output/comparison_graph.png")
     plt.close()
 
     plt.plot(x_axis, y_axis_solver_err, marker='o', markerfacecolor='black', markersize=5, color='black')
     plt.title("Solver Error Stats")
     plt.xlabel("q_probability")
     plt.ylabel("No. of solver error instance")
-    plt.savefig("solver_error.png")
+    plt.savefig("./output/solver_error.png")
+    plt.close()
+
+    plt.plot(x_axis, y_axis_solver_err_csat, marker='o', markerfacecolor='black', markersize=5, color='black')
+    plt.title("Custom MiniSAT Solver Error Stats")
+    plt.xlabel("q_probability")
+    plt.ylabel("No. of solver error instance")
+    plt.savefig("./output/csat_solver_error.png")
     plt.close()
 
     finalEndTime = int(time() * 1000)
     print("start:" + str(firststartTime))
     print("end:" + str(finalEndTime))
     print(finalEndTime - firststartTime)
-
