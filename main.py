@@ -297,7 +297,7 @@ if __name__ == '__main__':
     noOfNodes = 128
     probability = 0.75
     q_probability = 0.06
-    noOfGraphInstances = 10
+    noOfGraphInstances = 1
     worksheetNeeded = False
 
     x_axis = []
