@@ -65,16 +65,6 @@ def compute_graph_instance(row):
 
     # plt.close()
 
-    # g2 = nx.erdos_renyi_graph(noOfNodes, p, directed=True)
-    # pos = nx.circular_layout(g2)
-    # nx.draw_networkx_nodes(g2, pos=pos, node_size=200)
-    # # nx.draw_networkx_labels(g2, pos=pos, labels=labels, font_size=8)
-    # nx.draw_networkx_edges(g2, pos)
-    # fileName1 = "graph_instance_ER_" + str(row) + ".png"
-    # plt.savefig(fileName1)
-    # plt.close()
-
-    # plt.show()
     # print("Attack Set:")
     # print(nodeMappingForGraph)
     friends_set = compute_friends(nodeMappingForGraph)
@@ -93,9 +83,12 @@ def compute_graph_instance(row):
                                                      get_nodes_attacked_by_given_v(nodeMappingForGraph, x)))
         if extension and len(extension) != 0:
             extension = None if not extension else merge_arr(extension, [x])
-            print("Extension Found")
             break
 
+    if extension and len(extension) != 0:
+        print("BT Solver:Extension Found")
+    else:
+        print("BT Solver: Extension not found.")
     outputStr = extension_to_str(extension)
     # print(outputStr)
     extension_compute_end_time = int(time() * 1000)
@@ -106,18 +99,22 @@ def compute_graph_instance(row):
     write_in_worksheet(row, 1, outputStr)
 
     extension_compute_start_time = int(time() * 1000)
-    satExtension = satExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set)
+    solver_output = satExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set)
+    satExtension = solver_output.get('extension')
     extension_compute_end_time = int(time() * 1000)
     time_taken_sat_solver = extension_compute_end_time - extension_compute_start_time
     time_taken_sat_solver = round(time_taken_sat_solver / 1000, 0)
+    time_taken_sat_solver_wo_init = solver_output.get('time_taken_wo_init')
 
     outputSatExtensionStr = extension_to_str(satExtension)
 
     extension_compute_start_time = int(time() * 1000)
-    csatExtension = customMiniSatExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set, satExtension is None)
+    csolver_output = customMiniSatExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set, satExtension is None)
+    csatExtension = csolver_output.get('extension')
     extension_compute_end_time = int(time() * 1000)
     time_taken_csat_solver = extension_compute_end_time - extension_compute_start_time
     time_taken_csat_solver = round(time_taken_csat_solver / 1000, 0)
+    time_taken_csat_solver_wo_init = csolver_output.get('time_taken_wo_init')
 
     outputCSatExtensionStr = extension_to_str(csatExtension)
 
@@ -134,8 +131,10 @@ def compute_graph_instance(row):
     return {"success": False if not extension else True, "time_taken_cus_solver": time_taken_our_solver,
             "time_taken_sat_solver": time_taken_sat_solver, "time_taken_csat_solver": time_taken_csat_solver,
             "sat_cus_differ": False if (satExtension and extension) or (not satExtension and not extension) else True,
-            "sat_csat_differ": False if (satExtension and csatExtension) or (
-                        not satExtension and not csatExtension) else True
+            "sat_csat_differ": False if (satExtension and csatExtension) or
+                                        (not satExtension and not csatExtension) else True,
+            "time_taken_sat_solver_wo_init": time_taken_sat_solver_wo_init,
+            "time_taken_csat_solver_wo_init" : time_taken_csat_solver_wo_init
             }
 
 
@@ -209,6 +208,7 @@ def merge_arr(arr1, arr2):
     return resutArr
 
 
+# implemented BH3 branching heuristics
 def order_pivot_set_based_on_hostile_attack_weight(attack_set, p, f, h):
     pivot_attack_weight = []
     for x in p:
@@ -296,9 +296,9 @@ if __name__ == '__main__':
 
     noOfNodes = 128
     probability = 0.75
-    q_probability = 0.30
-    noOfGraphInstances = 25
-    worksheetNeeded = True
+    q_probability = 0.06
+    noOfGraphInstances = 10
+    worksheetNeeded = False
 
     x_axis = []
     y_axis = []
@@ -306,12 +306,14 @@ if __name__ == '__main__':
     y_axis_time_taken_cus = []
     y_axis_time_taken_sat = []
     y_axis_time_taken_csat = []
+    y_axis_time_taken_sat_wo_init = []
+    y_axis_time_taken_csat_wo_init = []
     y_axis_solver_err = []
     y_axis_solver_err_csat = []
 
     firststartTime = int(time() * 1000)
 
-    while q_probability <= 0.40:
+    while q_probability <= 0.06:
         x_axis.append(q_probability)
 
         if worksheetNeeded:
@@ -325,6 +327,8 @@ if __name__ == '__main__':
         timeTakenByCustomSolver = 0
         timeTakenBySatSolver = 0
         timeTakenByCSatSolver = 0
+        timeTakenBySatSolverWoInit = 0
+        timeTakenByCSatSolverWOInit = 0
         noOfSatCusSolverErr = 0
         noOfCSatCusSolverErr = 0
 
@@ -332,12 +336,14 @@ if __name__ == '__main__':
         print("StartTime:" + str(startTime))
         for i in range(1, noOfGraphInstances + 1):
             instanceStartTime = int(time() * 1000)
-            print("q_probability:", q_probability, "#graph_instance:", i)
+            print("\nq_probability:", q_probability, "#graph_instance:", i)
             returnValueSet = compute_graph_instance(row)
             noOfSuccess = noOfSuccess + 1 if returnValueSet.get("success") else noOfSuccess
             timeTakenByCustomSolver += returnValueSet.get("time_taken_cus_solver")
             timeTakenBySatSolver += returnValueSet.get("time_taken_sat_solver")
             timeTakenByCSatSolver += returnValueSet.get("time_taken_csat_solver")
+            timeTakenBySatSolverWoInit += returnValueSet.get("time_taken_sat_solver_wo_init")
+            timeTakenByCSatSolverWOInit += returnValueSet.get("time_taken_csat_solver_wo_init")
             noOfSatCusSolverErr += 1 if returnValueSet.get("sat_cus_differ") else 0
             noOfCSatCusSolverErr += 1 if returnValueSet.get("sat_csat_differ") else 0
             row = row + 1
@@ -355,44 +361,50 @@ if __name__ == '__main__':
         y_axis_time_taken_csat.append(timeTakenByCSatSolver / noOfGraphInstances)
         y_axis_solver_err.append(noOfSatCusSolverErr)
         y_axis_solver_err_csat.append(noOfCSatCusSolverErr)
+        y_axis_time_taken_sat_wo_init.append(timeTakenBySatSolverWoInit / noOfGraphInstances)
+        y_axis_time_taken_csat_wo_init.append(timeTakenByCSatSolverWOInit / noOfGraphInstances)
 
         timeTakenInSec = round(timeTaken / 1000, 0)
         write_in_worksheet(1, 5, str(math.floor(timeTakenInSec / 60)) + " mins " + str(timeTakenInSec % 60) + " sec")
-
-        # for i in range(4, noOfGraphInstances + 4):
-        #     row = row + 3
-        #     write_in_worksheet(row, 0, "Graph Instance" + str(i - 3) + ":")
-        #     row = row + 2
-        #     worksheet.insert_image(row, 0, "graph_instance_" + str(i) + ".png")
-        #     # worksheet.insert_image(row, 14, "graph_instance_ER_" + str(i) + ".png")
-        #     row = row + 24
 
         q_probability += 0.02
         if worksheetNeeded:
             workbook.close()
 
-    fig, axs = plt.subplots(2, 1)
+    fig, axs = plt.subplots(3, 1)
     plt.subplots_adjust(left=0.14, bottom=0.12, hspace=0.70)
     fig.suptitle("New Random Model with n=" + str(noOfNodes) + ", p=" + str(probability), fontsize=16)
 
-    fig.set_size_inches(8, 8)
+    fig.set_size_inches(16, 16)
 
     axs[0].plot(x_axis, y_axis, marker='o', markerfacecolor='black', markersize=5, color='black')
     axs[0].set_title("Success rate in Admissible set computation")
     axs[0].set_xlabel('q_probability')
     axs[0].set_ylabel('Average value of success instance')
 
-    axs[1].set_title("Time taken comparison between Custom solver, SAT(MiniSAT) solver, "
+    axs[1].set_title("Time taken comparison between \n Custom BT solver, SAT(MiniSAT) solver and \n"
                      "SAT(MiniSAT) Solver with custom branching heuristics")
     axs[1].set_xlabel('q_probability')
     axs[1].set_ylabel('Time taken(in Seconds)')
     axs[1].plot(x_axis, y_axis_time_taken_cus, marker='o', markerfacecolor='green', markersize=5,
-                color='green', label='Custom solver')
+                color='green', label='Custom BT solver')
     axs[1].plot(x_axis, y_axis_time_taken_sat, marker='o', markerfacecolor='red', markersize=5,
                 color='red', label='SAT(MiniSAT) solver')
     axs[1].plot(x_axis, y_axis_time_taken_csat, marker='o', markerfacecolor='violet', markersize=5,
                 color='violet', label='SAT(MiniSAT) solver with custom branching heuristics')
     axs[1].legend()
+
+    axs[2].set_title("Time taken (Without init) comparison between \n Custom BT solver, SAT(MiniSAT) solver and \n"
+                     "SAT(MiniSAT) Solver with custom branching heuristics")
+    axs[2].set_xlabel('q_probability')
+    axs[2].set_ylabel('Time taken(in Seconds)')
+    axs[2].plot(x_axis, y_axis_time_taken_cus, marker='o', markerfacecolor='green', markersize=5,
+                color='green', label='Custom BT solver')
+    axs[2].plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=5,
+                color='red', label='SAT(MiniSAT) solver')
+    axs[2].plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='violet', markersize=5,
+                color='violet', label='SAT(MiniSAT) solver with custom branching heuristics')
+    axs[2].legend()
     plt.savefig("./output/comparison_graph.png")
     plt.close()
 
