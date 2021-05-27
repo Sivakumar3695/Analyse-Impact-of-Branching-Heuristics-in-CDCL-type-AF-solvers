@@ -2,140 +2,113 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import random as random
 import xlsxwriter
-from time import time
+from time import perf_counter, time
 import math
 import satExtensionFinder
-import customMiniSatExtensionFinder
+import itertools
+import matplotlib.gridspec as gridspec
 
 
 def compute_graph_instance(row):
     g = nx.DiGraph()
     g.add_nodes_from(range(1, noOfNodes + 1))
-    nodeMappingForGraph = {}
-    for i in range(1, noOfNodes + 1):
-        node_map_i = []  # if not nodeMappingForGraph.get(i) else nodeMappingForGraph.get(i)
-        for j in range(1, noOfNodes + 1):
-            if i == j:
-                continue
-            # print("Has edge from " + str(j) + " to " + str(i))
-            # print(g.has_edge(u=j, v=i))
-            random_n = random.random()
-            # print("Random No. for " + str(i) + " to " + str(j) + ":" + str(random_n))
+    node_pairs = itertools.combinations(range(1, noOfNodes + 1), 2)
+    attack_set = {}
+    for node in range(1, noOfNodes + 1):
+        attack_set[node] = []
+    for node_pair in node_pairs:
+        if random.random() < probability:
+            if random.random() < q_probability:
+                g.add_edge(node_pair[0], node_pair[1])
+                attack_set[node_pair[0]].append(node_pair[1])
 
-            if random_n <= probability and not g.has_edge(u=j, v=i):
-                g.add_edge(i, j)
-                node_map_i.append(j)
+                g.add_edge(node_pair[1], node_pair[0])
+                attack_set[node_pair[1]].append(node_pair[0])
             else:
-                continue
-        nodeMappingForGraph[i] = node_map_i
-    for i in range(1, noOfNodes + 1):
-        for j in range(i + 1, noOfNodes + 1):
-            hasEdgeAlreadyItoJ = g.has_edge(u=i, v=j)
-            hasEdgeAlreadyJtoI = g.has_edge(u=j, v=i)
-            nodeMapI = nodeMappingForGraph[i]
-            nodeMapJ = nodeMappingForGraph[j]
-            random_n = random.random()
-            # print("Random No. :" + str(random_n))
-            if random_n <= q_probability and (hasEdgeAlreadyItoJ or hasEdgeAlreadyJtoI):
-                if hasEdgeAlreadyJtoI:
-                    # print("Establishing symmetric attack... between " + str(i) + " and " + str(j))
-                    g.add_edge(i, j)
-                    nodeMapI.append(j)
-                elif hasEdgeAlreadyItoJ:
-                    # print("Establishing symmetric attack... between " + str(j) + " and " + str(i))
-                    g.add_edge(j, i)
-                    nodeMapJ.append(i)
+                if random.random() < 0.5:
+                    g.add_edge(node_pair[0], node_pair[1])
+                    attack_set[node_pair[0]].append(node_pair[1])
                 else:
-                    continue
-            else:
-                continue
-    # nx.draw(g, with_labels=True)
+                    g.add_edge(node_pair[1], node_pair[0])
+                    attack_set[node_pair[1]].append(node_pair[0])
+
     labels = {}
-    for i in range(1, noOfNodes + 1):
-        labels[i] = str(i)
+    for node in range(1, noOfNodes + 1):
+        labels[node] = str(node)
 
-    # start
-    # pos = nx.spring_layout(g)
-    # nx.draw_networkx_nodes(g, pos=pos, node_size=10)
-    # nx.draw_networkx_labels(g, pos=pos, labels=labels, font_size=10)
-    # nx.draw_networkx_edges(g, pos)
-    # file_name = "graph_instance_" + str(row) + ".png"
-    # plt.savefig(file_name)
-    # end
-
-    # plt.close()
-
-    # print("Attack Set:")
-    # print(nodeMappingForGraph)
-    friends_set = compute_friends(nodeMappingForGraph)
-    # print("Friend Set:")
-    # print(friends_set)
-    vertex_set = [i for i in range(1, noOfNodes + 1)]
-    # print("Vertex:")
-    # print(vertex_set)
+    friends_set = compute_friends(attack_set)
+    vertex_set = [node for node in range(1, noOfNodes + 1)]
 
     extension = None
-    extension_compute_start_time = int(time() * 1000)
-    for x in vertex_set:
-        # print("Computing extension for :" + str(x))
-        extension = compute_arg_extension(nodeMappingForGraph, friends_set, [x], friends_set[x],
-                                          remove_arr(get_nodes_attacks_given_v(nodeMappingForGraph, x),
-                                                     get_nodes_attacked_by_given_v(nodeMappingForGraph, x)))
-        if extension and len(extension) != 0:
-            extension = None if not extension else merge_arr(extension, [x])
-            break
-
-    if extension and len(extension) != 0:
-        print("BT Solver:Extension Found")
-    else:
-        print("BT Solver: Extension not found.")
+    extension_compute_start_time = perf_counter()
+    # for x in vertex_set:
+    #     # print("Computing Extension for: " + str(x))
+    #     extension = compute_arg_extension(attack_set, friends_set, [x], friends_set[x],
+    #                                       remove_arr(get_nodes_attacks_given_v(attack_set, x),
+    #                                                  get_nodes_attacked_by_given_v(attack_set, x)))
+    #     if extension and len(extension) != 0:
+    #         extension = None if not extension else merge_arr(extension, [x])
+    #         break
+    # print(extension);
+    # if extension and len(extension) != 0:
+    #     print("BT Solver:Extension Found")
+    # else:
+    #     print("BT Solver: Extension not found.")
     outputStr = extension_to_str(extension)
     # print(outputStr)
-    extension_compute_end_time = int(time() * 1000)
+    extension_compute_end_time = perf_counter()
     time_taken_our_solver = extension_compute_end_time - extension_compute_start_time
-    time_taken_our_solver = round(time_taken_our_solver / 1000, 0)
+    # time_taken_our_solver = round(time_taken_our_solver / 1000, 0)
 
     write_in_worksheet(row, 0, "Graph-Instance-" + str(row - 3))
     write_in_worksheet(row, 1, outputStr)
 
-    extension_compute_start_time = int(time() * 1000)
-    solver_output = satExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set)
-    satExtension = solver_output.get('extension')
-    extension_compute_end_time = int(time() * 1000)
-    time_taken_sat_solver = extension_compute_end_time - extension_compute_start_time
-    time_taken_sat_solver = round(time_taken_sat_solver / 1000, 0)
-    time_taken_sat_solver_wo_init = solver_output.get('time_taken_wo_init')
+    attacked_by_dict = {}
+    for vertex in vertex_set:
+        attacked_by_dict[vertex] = get_nodes_attacks_given_v(attack_set, vertex)
 
-    outputSatExtensionStr = extension_to_str(satExtension)
+    solver_output = satExtensionFinder.get_admissible_set(attack_set, vertex_set, attacked_by_dict)
 
-    extension_compute_start_time = int(time() * 1000)
-    csolver_output = customMiniSatExtensionFinder.get_admissible_set(nodeMappingForGraph, vertex_set, satExtension is None)
-    csatExtension = csolver_output.get('extension')
-    extension_compute_end_time = int(time() * 1000)
-    time_taken_csat_solver = extension_compute_end_time - extension_compute_start_time
-    time_taken_csat_solver = round(time_taken_csat_solver / 1000, 0)
-    time_taken_csat_solver_wo_init = csolver_output.get('time_taken_wo_init')
+    is_sat_extension_found = solver_output.get('minisat_satisfiable')
+    is_custom_sat_extension_found = solver_output.get('custom_minisat_satisfiable')
 
-    outputCSatExtensionStr = extension_to_str(csatExtension)
+    time_taken_sat_solver = solver_output.get('minisat_total_time_taken')
+    time_taken_sat_solver_wo_init = solver_output.get('minisat_time_taken_wo_formula_generation')
 
-    write_in_worksheet(row, 2, outputSatExtensionStr)
-    write_in_worksheet(row, 3,
+    time_taken_csat_solver = solver_output.get('custom_minisat_total_time_taken')
+    time_taken_csat_solver_wo_init = solver_output.get('custom_minisat_time_taken_wo_formula_generation')
+
+    time_taken_bh3_sat_solver = solver_output.get('bh3_minisat_total_time_taken')
+    time_taken_bh3_sat_solver_wo_init = solver_output.get('bh3_minisat_time_taken_wo_formula_generation')
+
+    write_in_worksheet(row,
+                       3,
                        str(math.floor(time_taken_our_solver / 60)) + " mins " + str(
                            time_taken_our_solver % 60) + " sec")
-    write_in_worksheet(row, 4,
+    write_in_worksheet(row,
+                       4,
                        str(math.floor(time_taken_sat_solver / 60)) + " mins " + str(
                            time_taken_sat_solver % 60) + " sec")
-    write_in_worksheet(row, 5,
+    write_in_worksheet(row,
+                       5,
                        str(math.floor(time_taken_csat_solver / 60)) + " mins " + str(
                            time_taken_csat_solver % 60) + " sec")
-    return {"success": False if not extension else True, "time_taken_cus_solver": time_taken_our_solver,
-            "time_taken_sat_solver": time_taken_sat_solver, "time_taken_csat_solver": time_taken_csat_solver,
-            "sat_cus_differ": False if (satExtension and extension) or (not satExtension and not extension) else True,
-            "sat_csat_differ": False if (satExtension and csatExtension) or
-                                        (not satExtension and not csatExtension) else True,
-            "time_taken_sat_solver_wo_init": time_taken_sat_solver_wo_init,
-            "time_taken_csat_solver_wo_init" : time_taken_csat_solver_wo_init
-            }
+    return {
+        "success": False if not is_sat_extension_found else True,
+        "time_taken_cus_solver": time_taken_our_solver,
+        "time_taken_sat_solver": time_taken_sat_solver,
+        "time_taken_csat_solver": time_taken_csat_solver,
+        "time_taken_bh3_solver": time_taken_bh3_sat_solver,
+        "sat_cus_differ": False if (is_sat_extension_found and solver_output.get("bh3_minisat_satisfiable"))
+                                   or (not is_sat_extension_found and not solver_output.get(
+            "bh3_minisat_satisfiable")) else True,
+        "sat_csat_differ": False if (is_sat_extension_found and is_custom_sat_extension_found)
+                                    or (not is_sat_extension_found and not is_custom_sat_extension_found) else True,
+        "time_taken_sat_solver_wo_init": time_taken_sat_solver_wo_init,
+        "time_taken_csat_solver_wo_init": time_taken_csat_solver_wo_init,
+        "time_taken_bh3_solver_wo_init": time_taken_bh3_sat_solver_wo_init
+
+    }
 
 
 def extension_to_str(extension):
@@ -165,13 +138,32 @@ def compute_friends(attack_set):
     return friends_set
 
 
+def compute_pure_attacked_by(attack_set):
+    pure_attack_by_set = {}
+    for i in range(1, len(attack_set) + 1):
+        if not pure_attack_by_set.get(i):
+            pure_attack_by_set[i] = []
+        for j in range(i + 1, len(attack_set) + 1):
+            if not pure_attack_by_set.get(j):
+                pure_attack_by_set[j] = []
+            if i not in attack_set[j] and j in attack_set[i]:
+                pure_attack_by_set[j].append(i)
+            elif j not in attack_set[i] and i in attack_set[j]:
+                pure_attack_by_set[i].append(j)
+            else:
+                continue
+    return pure_attack_by_set
+
+
 def compute_arg_extension(graph_set, friend_set, e, f, h):
     if len(h) == 0:
         return e
     p = select_pivot_set(graph_set, f, h)
+    # print(p)
     p = order_pivot_set_based_on_hostile_attack_weight(graph_set, p, f, h)
     while len(p) != 0:
         v = p[0]  # select_pivot
+        print(v)
         e_new = merge_arr(e, [v])
         f_new = remove_arr(f, merge_arr(
             merge_arr(get_nodes_attacked_by_given_v(graph_set, v, f), get_nodes_attacks_given_v(graph_set, v, f)), [v]))
@@ -211,18 +203,21 @@ def merge_arr(arr1, arr2):
 # implemented BH3 branching heuristics
 def order_pivot_set_based_on_hostile_attack_weight(attack_set, p, f, h):
     pivot_attack_weight = []
+    # print("F_SET:"+ str(f))
+    # print("H_SET:" + str(h))
     for x in p:
         attack_weight_x = [x]
         hostile_attacked_by_x = get_nodes_attacked_by_given_v(attack_set, x, h)
         friends_attacks_x = get_nodes_attacks_given_v(attack_set, x, f)
         friends_attacked_by_x = get_nodes_attacked_by_given_v(attack_set, x, f)
-
+        # print("Hostile:"+ str(hostile_attacked_by_x))
         friends_set_considered = remove_arr(friends_attacks_x, friends_attacked_by_x)
-
+        # print("F:" + str(friends_set_considered))
         attack_weight_x.append(len(hostile_attacked_by_x) - len(friends_set_considered))
         pivot_attack_weight.append(attack_weight_x)
 
     pivot_attack_weight.sort(key=sort_by_weight, reverse=True)
+    print(pivot_attack_weight)
     ordered_pivot = []
     for x in pivot_attack_weight:
         ordered_pivot.append(x[0])
@@ -287,33 +282,37 @@ def init_worksheet():
         write_in_worksheet(3, 5, "Time taken to compute extension by Custom MiniSAT solver")
 
 
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # noOfNodes = int(input("Enter the No. of Nodes: "))
-    # probability = float(input("Enter probability: "))
-    # q_probability = float(input("Enter Symmetric attack probability: "))
-    # noOfGraphInstances = int(input("No. of graph instances needed: "))
-
     noOfNodes = 128
     probability = 0.75
     q_probability = 0.06
-    noOfGraphInstances = 1
+    noOfGraphInstances = 25
     worksheetNeeded = False
+
+    noOfNodes = int(input("Enter the No. of Nodes: "))
+    # probability = float(input("Enter probability: "))
+    # q_probability = float(input("Enter Symmetric attack probability: "))
+    # noOfGraphInstances = int(input("No. of graph instances needed: "))
 
     x_axis = []
     y_axis = []
 
     y_axis_time_taken_cus = []
+
     y_axis_time_taken_sat = []
+
     y_axis_time_taken_csat = []
+
     y_axis_time_taken_sat_wo_init = []
+
     y_axis_time_taken_csat_wo_init = []
+    y_axis_time_taken_bh3_sat_wo_init = []
     y_axis_solver_err = []
     y_axis_solver_err_csat = []
 
     firststartTime = int(time() * 1000)
 
-    while q_probability <= 0.06:
+    while q_probability <= 0.50:
         x_axis.append(q_probability)
 
         if worksheetNeeded:
@@ -329,6 +328,7 @@ if __name__ == '__main__':
         timeTakenByCSatSolver = 0
         timeTakenBySatSolverWoInit = 0
         timeTakenByCSatSolverWOInit = 0
+        timeTakenByBh3SatSolverWOInit = 0
         noOfSatCusSolverErr = 0
         noOfCSatCusSolverErr = 0
 
@@ -339,11 +339,12 @@ if __name__ == '__main__':
             print("\nq_probability:", q_probability, "#graph_instance:", i)
             returnValueSet = compute_graph_instance(row)
             noOfSuccess = noOfSuccess + 1 if returnValueSet.get("success") else noOfSuccess
-            timeTakenByCustomSolver += returnValueSet.get("time_taken_cus_solver")
+            timeTakenByCustomSolver += returnValueSet.get("time_taken_bh3_solver")
             timeTakenBySatSolver += returnValueSet.get("time_taken_sat_solver")
             timeTakenByCSatSolver += returnValueSet.get("time_taken_csat_solver")
             timeTakenBySatSolverWoInit += returnValueSet.get("time_taken_sat_solver_wo_init")
             timeTakenByCSatSolverWOInit += returnValueSet.get("time_taken_csat_solver_wo_init")
+            timeTakenByBh3SatSolverWOInit += returnValueSet.get("time_taken_bh3_solver_wo_init")
             noOfSatCusSolverErr += 1 if returnValueSet.get("sat_cus_differ") else 0
             noOfCSatCusSolverErr += 1 if returnValueSet.get("sat_csat_differ") else 0
             row = row + 1
@@ -363,6 +364,7 @@ if __name__ == '__main__':
         y_axis_solver_err_csat.append(noOfCSatCusSolverErr)
         y_axis_time_taken_sat_wo_init.append(timeTakenBySatSolverWoInit / noOfGraphInstances)
         y_axis_time_taken_csat_wo_init.append(timeTakenByCSatSolverWOInit / noOfGraphInstances)
+        y_axis_time_taken_bh3_sat_wo_init.append(timeTakenByBh3SatSolverWOInit / noOfGraphInstances)
 
         timeTakenInSec = round(timeTaken / 1000, 0)
         write_in_worksheet(1, 5, str(math.floor(timeTakenInSec / 60)) + " mins " + str(timeTakenInSec % 60) + " sec")
@@ -371,56 +373,225 @@ if __name__ == '__main__':
         if worksheetNeeded:
             workbook.close()
 
-    fig, axs = plt.subplots(3, 1)
-    plt.subplots_adjust(left=0.14, bottom=0.12, hspace=0.70)
-    fig.suptitle("New Random Model with n=" + str(noOfNodes) + ", p=" + str(probability), fontsize=16)
+    print("Y axis:")
+    print(y_axis)
+    print("Time take custom solver:")
+    print(y_axis_time_taken_cus)
+    print("Total Time taken minisat:")
+    print(y_axis_time_taken_sat)
+    print("Total time taken custom minisat:")
+    print(y_axis_time_taken_csat)
+    print("Time taken wo init minisat:")
+    print(y_axis_time_taken_sat_wo_init)
+    print("Time taken wo init custom minisat:")
+    print(y_axis_time_taken_csat_wo_init)
+    print("Time taken wo init bh3 minisat:")
+    print(y_axis_time_taken_bh3_sat_wo_init)
 
-    fig.set_size_inches(16, 16)
+    fig = plt.figure(figsize=[4, 2], facecolor='white', constrained_layout=True)
+    plt.rc('font', size=3)
+    plt.rcParams['font.size'] = 5
+    plt.rcParams['text.color'] = '#8d8c8c'
+    # plt.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    axs = fig.add_subplot(1, 1, 1)
+    axs.spines['top'].set_color('#c4c4c4')
+    axs.spines['left'].set_color('#c4c4c4')
+    axs.spines['bottom'].set_color('#c4c4c4')
+    axs.spines['right'].set_color('#c4c4c4')
+    for label in (axs.get_xticklabels() + axs.get_yticklabels()):
+        label.set_fontsize(2)
+    axs.set_xlim([0.06, 0.5])
+    axs.set_xticks(x_axis, minor=True)
+    axs.set_xticks([0.06, 0.16, 0.26, 0.36, 0.46], minor=False)
+    axs.xaxis.grid(True, which='major', linewidth=0.3, color='#eeeded', linestyle='-')
+    axs.xaxis.grid(True, which='minor', linewidth=0.3, color='#eeeded', linestyle='-')
+    axs.yaxis.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    axs.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    axs.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c', which='minor'
+    )
+    axs.tick_params(
+        axis='y', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
 
-    axs[0].plot(x_axis, y_axis, marker='o', markerfacecolor='black', markersize=5, color='black')
-    axs[0].set_title("Success rate in Admissible set computation")
-    axs[0].set_xlabel('q_probability')
-    axs[0].set_ylabel('Average value of success instance')
+    axs.plot(x_axis, y_axis, marker='o', markerfacecolor='black', markersize=0.5, color='black', linewidth=0.25,
+             label="Avg. rate of success")
+    # axs.set_title("Success rate in Admissible set computation")
+    axs.set_xlabel('Probability of Symmetric Attack: q')
+    axs.set_ylabel('Average rate of success instance')
 
-    axs[1].set_title("Time taken comparison between \n Custom BT solver, SAT(MiniSAT) solver and \n"
-                     "SAT(MiniSAT) Solver with custom branching heuristics")
-    axs[1].set_xlabel('q_probability')
-    axs[1].set_ylabel('Time taken(in Seconds)')
-    axs[1].plot(x_axis, y_axis_time_taken_cus, marker='o', markerfacecolor='green', markersize=5,
-                color='green', label='Custom BT solver')
-    axs[1].plot(x_axis, y_axis_time_taken_sat, marker='o', markerfacecolor='red', markersize=5,
-                color='red', label='SAT(MiniSAT) solver')
-    axs[1].plot(x_axis, y_axis_time_taken_csat, marker='o', markerfacecolor='violet', markersize=5,
-                color='violet', label='SAT(MiniSAT) solver with custom branching heuristics')
-    axs[1].legend()
+    axs.legend(loc='center left', frameon=False, facecolor='white')
 
-    axs[2].set_title("Time taken (Without init) comparison between \n Custom BT solver, SAT(MiniSAT) solver and \n"
-                     "SAT(MiniSAT) Solver with custom branching heuristics")
-    axs[2].set_xlabel('q_probability')
-    axs[2].set_ylabel('Time taken(in Seconds)')
-    axs[2].plot(x_axis, y_axis_time_taken_cus, marker='o', markerfacecolor='green', markersize=5,
-                color='green', label='Custom BT solver')
-    axs[2].plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=5,
-                color='red', label='SAT(MiniSAT) solver')
-    axs[2].plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='violet', markersize=5,
-                color='violet', label='SAT(MiniSAT) solver with custom branching heuristics')
-    axs[2].legend()
-    plt.savefig("./output/comparison_graph.png")
+    axs2 = axs.twinx()
+    axs2.spines['top'].set_color('#c4c4c4')
+    axs2.spines['left'].set_color('#c4c4c4')
+    axs2.spines['bottom'].set_color('#c4c4c4')
+    axs2.spines['right'].set_color('#c4c4c4')
+    for label in (axs2.get_xticklabels() + axs2.get_yticklabels()):
+        label.set_fontsize(5)
+    axs2.set_xlim([0.06, 0.5])
+    axs2.set_xticks(x_axis, minor=True)
+    axs2.set_xticks([0.06, 0.16, 0.26, 0.36, 0.46], minor=False)
+    # plt.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    axs2.xaxis.grid(True, which='major', linewidth=0.3, color='#eeeded', linestyle='-')
+    axs2.xaxis.grid(True, which='minor', linewidth=0.3, color='#eeeded', linestyle='-')
+    axs2.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    axs2.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c', which='minor'
+    )
+    axs2.tick_params(
+        axis='y', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    axs2.set_ylabel('Time taken (in Seconds)')
+    axs2.plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=0.5,
+              color='red', label='VSIDS branching', linewidth=0.25)
+    axs2.plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='#4b0082', markersize=0.5,
+              color='#4b0082', label='AROFS branching', linewidth=0.25)
+    axs2.plot(x_axis, y_axis_time_taken_bh3_sat_wo_init, marker='o', markerfacecolor='green', markersize=0.5,
+              color='green', label='BRmcha-BH3 branching', linewidth=0.25)
+    axs2.legend(loc='center right', frameon=False, facecolor='white')
+
+    plt.savefig("./output/comparison_graph.png", dpi=300)
     plt.close()
 
-    plt.plot(x_axis, y_axis_solver_err, marker='o', markerfacecolor='black', markersize=5, color='black')
-    plt.title("Solver Error Stats")
-    plt.xlabel("q_probability")
-    plt.ylabel("No. of solver error instance")
-    plt.savefig("./output/solver_error.png")
+    fig = plt.figure(figsize=[8, 4], facecolor='white', constrained_layout=True)
+    gs = fig.add_gridspec(2, 4)
+
+    ax = fig.add_subplot(gs[0, :2])
+    plt.rc('font', size=5)
+    plt.rcParams['font.size'] = 5
+    plt.rcParams['text.color'] = '#8d8c8c'
+    ax.spines['top'].set_color('#c4c4c4')
+    ax.spines['left'].set_color('#c4c4c4')
+    ax.spines['bottom'].set_color('#c4c4c4')
+    ax.spines['right'].set_color('#c4c4c4')
+    for label in (ax.get_xticklabels() + ax.get_yticklabels()):
+        label.set_fontsize(5)
+    ax.plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=0.5,
+            color='red', label='VSIDS branching', linewidth=0.25)
+    ax.plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='#4b0082', markersize=0.5,
+            color='#4b0082', label='AROFS branching', linewidth=0.25)
+    ax.plot(x_axis, y_axis_time_taken_bh3_sat_wo_init, marker='o', markerfacecolor='green', markersize=0.5,
+            color='green', label='BRmcha-BH3 branching', linewidth=0.25)
+    ax.set_xlim([0.06, 0.5])
+    ax.set_xticks(x_axis, minor=True)
+    ax.set_xticks([0.06, 0.16, 0.26, 0.36, 0.46], minor=False)
+    plt.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    ax.xaxis.grid(True, which='major', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax.xaxis.grid(True, which='minor', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c', which='minor'
+    )
+    ax.tick_params(
+        axis='y', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax.set_title("(A): n = 512")
+
+    leg = ax.legend(loc='best', frameon=False, facecolor='white')
+
+    ax2 = fig.add_subplot(gs[0, 2:])
+    plt.rc('font', size=5)
+    plt.rcParams['font.size'] = 5
+    plt.rcParams['text.color'] = '#8d8c8c'
+
+    ax2.spines['top'].set_color('#c4c4c4')
+    ax2.spines['left'].set_color('#c4c4c4')
+    ax2.spines['bottom'].set_color('#c4c4c4')
+    ax2.spines['right'].set_color('#c4c4c4')
+    for label in (ax2.get_xticklabels() + ax2.get_yticklabels()):
+        label.set_fontsize(5)
+    ax2.plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=0.5,
+             color='red', linewidth=0.25)
+    ax2.plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='#4b0082', markersize=0.5,
+             color='#4b0082', linewidth=0.25)
+    ax2.plot(x_axis, y_axis_time_taken_bh3_sat_wo_init, marker='o', markerfacecolor='green', markersize=0.5,
+             color='green', linewidth=0.25)
+    ax2.set_xlim([0.06, 0.5])
+    ax2.set_xticks(x_axis, minor=True)
+    ax2.set_xticks([0.06, 0.16, 0.26, 0.36, 0.46], minor=False)
+    plt.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    ax2.xaxis.grid(True, which='major', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax2.xaxis.grid(True, which='minor', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax2.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax2.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c', which='minor'
+    )
+    ax2.tick_params(
+        axis='y', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax2.set_title("(B): n = 256")
+
+    ax3 = fig.add_subplot(gs[1, 1:3])
+    plt.rc('font', size=5)
+    plt.rcParams['font.size'] = 5
+    plt.rcParams['text.color'] = '#8d8c8c'
+
+    ax3.spines['top'].set_color('#c4c4c4')
+    ax3.spines['left'].set_color('#c4c4c4')
+    ax3.spines['bottom'].set_color('#c4c4c4')
+    ax3.spines['right'].set_color('#c4c4c4')
+    ax3.plot(x_axis, y_axis_time_taken_sat_wo_init, marker='o', markerfacecolor='red', markersize=0.5,
+             color='red', linewidth=0.25)
+    ax3.plot(x_axis, y_axis_time_taken_csat_wo_init, marker='o', markerfacecolor='#4b0082', markersize=0.5,
+             color='#4b0082', linewidth=0.25)
+    ax3.plot(x_axis, y_axis_time_taken_bh3_sat_wo_init, marker='o', markerfacecolor='green', markersize=0.5,
+             color='green', linewidth=0.25)
+    ax3.set_xlim([0.06, 0.5])
+    ax3.set_xticks(x_axis, minor=True)
+    ax3.set_xticks([0.06, 0.16, 0.26, 0.36, 0.46], minor=False)
+    plt.grid(True, linewidth=0.60, color='#eeeded', linestyle='-')
+    ax3.xaxis.grid(True, which='major', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax3.xaxis.grid(True, which='minor', linewidth=0.3, color='#eeeded', linestyle='-')
+    ax3.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax3.tick_params(
+        axis='x', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c', which='minor'
+    )
+    ax3.tick_params(
+        axis='y', labelsize=5, length=0, width=0,
+        labelcolor='#8d8c8c'
+    )
+    ax3.set_title("(C): n = 128")
+    plt.savefig("./output/sat_comparison_graph.png", dpi=300)
     plt.close()
 
-    plt.plot(x_axis, y_axis_solver_err_csat, marker='o', markerfacecolor='black', markersize=5, color='black')
-    plt.title("Custom MiniSAT Solver Error Stats")
-    plt.xlabel("q_probability")
-    plt.ylabel("No. of solver error instance")
-    plt.savefig("./output/csat_solver_error.png")
-    plt.close()
+    # plt.plot(x_axis, y_axis_solver_err, marker='o', markerfacecolor='black', markersize=5, color='black')
+    # plt.title("Solver Error Stats")
+    # plt.xlabel("q_probability")
+    # plt.ylabel("No. of solver error instance")
+    # plt.savefig("./output/solver_error.png")
+    # plt.close()
+    #
+    # plt.plot(x_axis, y_axis_solver_err_csat, marker='o', markerfacecolor='black', markersize=5, color='black')
+    # plt.title("Custom MiniSAT Solver Error Stats")
+    # plt.xlabel("q_probability")
+    # plt.ylabel("No. of solver error instance")
+    # plt.savefig("./output/csat_solver_error.png")
+    # plt.close()
 
     finalEndTime = int(time() * 1000)
     print("start:" + str(firststartTime))
